@@ -59,11 +59,18 @@ class ServerInfo(Rippled):
 		self.proposers = self.get_safe(self.raw,'info.last_close.proposers')
 		self.age = self.get_safe(self.raw,'info.closed_ledger.age')
 		self.peers = self.get_safe(self.raw,'info.peers')
+		self.load_factor = self.get_safe(self.raw,'info.load_factor')
 		self.validation_quorum = self.get_safe(self.raw,'info.validation_quorum')
 		self.jobs_raw = self.get_safe(self.raw,'info.load.job_types')
 		self.threads = self.get_safe(self.raw,'info.load.threads')
 		server_state_str = self.get_safe(self.raw,'info.server_state')
 		self.server_state = ServerState[server_state_str]
+		self.validated_age = self.get_safe(self.raw,'info.validated_ledger.age')
+		self.base_fee_xrp = self.get_safe(self.raw,'info.validated_ledger.base_fee_xrp')
+		self.reserve_base_xrp = self.get_safe(self.raw,'info.validated_ledger.reserve_base_xrp')
+		self.reserve_inc_xrp = self.get_safe(self.raw,'info.validated_ledger.reserve_inc_xrp')
+		self.validated_seq = self.get_safe(self.raw,'info.validated_ledger.seq')
+
 		jobs = []
 		for job in self.jobs_raw:
 			j = {}
@@ -101,10 +108,10 @@ class ServerState(Enum):
 	validating = 6
 
 class ServerType(Enum):
-	validator = (4,"proposing")
-	client_handler = (5,"full")
-	hub = (5,"full")
-	def __init__(self,proposers_needed,state_needed):
+	validator = (1,4,"proposing")
+	client_handler = (2,5,"full")
+	hub = (3,5,"full")
+	def __init__(self,i,proposers_needed,state_needed):
 		self.proposers_needed = proposers_needed
 		self.state_needed = state_needed
 	@classmethod

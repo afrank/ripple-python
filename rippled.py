@@ -23,9 +23,12 @@ class Rippled:
 		self.host = host
 	def close(self):
 		self.ws.close()
-	def get(self,command):
+	def get(self,command,params=None):
 		#self.ws.send(json.JSONEncoder().encode({"command": command}))
-		self.ws.send('{"command":"%s"}' % command)
+		cmd = {'command': str(command)}
+		if params:
+			cmd['params'] = params
+		self.ws.send(json.dumps(cmd).encode())
 		res = self.ws.recv()
 		return json.loads(res)['result']
 

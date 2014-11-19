@@ -108,6 +108,16 @@ if host_type.name == 'validator':
 g.set_prefix("rippled.%s" % g.get('hostname'))
 g.add("check_rippled.status_code",code)
 
+# nodestore activity
+getCounts = rippled.Rippled('localhost').get('get_counts', ({'min_count': 0}) )
+g.set_prefix('rippled.%s.get_counts' % g.get('hostname'))
+if 'node_reads_hit' in getCounts:
+	g.add('node_reads_hit', getCounts['node_reads_hit'])
+if 'node_reads_total' in getCounts:
+	g.add('node_reads_total', getCounts['node_reads_total'])
+if 'node_writes' in getCounts:
+	g.add('node_writes', getCounts['node_writes'])
+
 g.send('0.0.0.0')
 
 print(msg)

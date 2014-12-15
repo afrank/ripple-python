@@ -26,7 +26,7 @@ LOGFILE = "/var/log/nginx/access.log"
 class Punisher:
     def __init__(self):
         self._pre_punish = collections.Counter()
-        self._cur_punish = {}
+        self._cur_punish = collections.Counter()
         self._punish_log = collections.Counter()
         self._changed = True
 
@@ -47,17 +47,20 @@ class Punisher:
         return self._cur_punish
     def del_cur_punish(self,ip):
         del self._cur_punish[ip]
+        self._cur_punish += collections.Counter()
         self._changed = True
     def add_cur_punish(self,ip):
         punish_factor = math.sqrt(self._punish_log[ip])
-        if ip in self._cur_punish:
-            self._cur_punish[ip] += (PUNISHMENT_TIME * punish_factor)
-            #if end > self._cur_punish[addr]:
-            #    self._cur_punish[addr] = end
-        else:
+        if punish_factor < 1:
+            punish_factor = 1
+        #if ip in self._cur_punish:
+        if self._cur_punish[ip] == 0:
             print "calling new punishment for %s" % (ip,)
-            self._cur_punish[ip] = int(time.time()) + (PUNISHMENT_TIME * punish_factor)
+            self._cur_punish[ip] += (int(time.time()) + int(PUNISHMENT_TIME * punish_factor))
             self._changed = True
+        else:
+            print "adding to existing punishment for %s" % (ip,)
+            self._cur_punish[ip] += int(PUNISHMENT_TIME * punish_factor)
         self.add_punish_log(ip)
 
     @property
@@ -74,7 +77,7 @@ class Punisher:
 
     def publish(self):
         if self._changed == True:
-            print("publish method has been called, would be punishing ",self._cur_punish.keys())
+            #print("publish method has been called, would be punishing ",self._cur_punish.keys())
             print("Writing %s" % BLOCKFILE)
             f = open(BLOCKFILE,'w')
             for p in self._cur_punish.keys():
@@ -126,7 +129,9 @@ def worker():
         if v > MAX_INTERVALS:
             P.add_cur_punish(k)
             P.del_pre_punish(k,True)
-    for addr,end in P.cur_punish.iteritems():
+    print "Current Punishment at this point: ", dict(P.cur_punish)
+    print "Current stamp: ",time.time()
+    for addr,end in dict(P.cur_punish).iteritems():
         if end < time.time():
             _x += [addr]
     for x in _x:
@@ -170,3 +175,4 @@ if __name__ == "__main__":
     cnt = collections.Counter()
     P = Punisher()
     sys.exit(main(sys.argv))
+

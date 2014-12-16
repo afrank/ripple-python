@@ -29,7 +29,7 @@ class Punisher:
         self._cur_punish = collections.Counter()
         self._punish_log = collections.Counter()
         self._changed = True
-
+    
     @property
     def pre_punish(self):
         return self._pre_punish
@@ -41,7 +41,7 @@ class Punisher:
         self._pre_punish += collections.Counter()
     def add_pre_punish(self,ip):
         self._pre_punish[ip] += 1
-
+    
     @property
     def cur_punish(self):
         return self._cur_punish
@@ -53,7 +53,6 @@ class Punisher:
         punish_factor = math.sqrt(self._punish_log[ip])
         if punish_factor < 1:
             punish_factor = 1
-        #if ip in self._cur_punish:
         if self._cur_punish[ip] == 0:
             print "calling new punishment for %s" % (ip,)
             self._cur_punish[ip] += (int(time.time()) + int(PUNISHMENT_TIME * punish_factor))
@@ -72,13 +71,13 @@ class Punisher:
         if full_delete == True:
             del self._punish_log[ip]
         else:
+            print "Decrementing %s by 1" % (ip,)
             self._punish_log[ip] -= 1
             self._punish_log += collections.Counter()
 
     def publish(self):
         if self._changed == True:
-            #print("publish method has been called, would be punishing ",self._cur_punish.keys())
-            print("Writing %s" % BLOCKFILE)
+            print("Writing %s" % BLOCKFILE)	
             f = open(BLOCKFILE,'w')
             for p in self._cur_punish.keys():
                 f.write("deny %s;\n" % p)
@@ -88,7 +87,7 @@ class Punisher:
             self._changed = False
         else:
             print "No changes to publish."
-
+    
 def kill(proc):
     """Kills the subprocess given in argument."""
     # Clean up after ourselves.
@@ -114,8 +113,6 @@ def do_on_signal(signum, func, *args, **kwargs):
     signal.signal(signum, signal_shutdown)
 
 def worker():
-    global cnt
-    global P
     ip_list = []
     _x = []
     for k,v in dict(cnt).iteritems():
@@ -129,16 +126,16 @@ def worker():
         if v > MAX_INTERVALS:
             P.add_cur_punish(k)
             P.del_pre_punish(k,True)
-    print "Current Punishment at this point: ", dict(P.cur_punish)
-    print "Current stamp: ",time.time()
     for addr,end in dict(P.cur_punish).iteritems():
         if end < time.time():
             _x += [addr]
     for x in _x:
         print "removing %s from punishment list" % x
         P.del_cur_punish(x)
+    for a in dict(P.punish_log).keys():
+        if a not in ip_list:
+            P.del_punish_log(k)
     P.publish()
-    #punish([x[0] for x in _cur_punish])
     print "Current: ",ip_list
     print "Pre-Punishment: ",P.pre_punish
     print "Currently Punished: ",P.cur_punish
@@ -153,7 +150,6 @@ def main(argv):
     do_on_signal(signal.SIGPIPE, kill, p)
     do_on_signal(signal.SIGTERM, kill, p)
     worker()
-    global cnt
     R = re.compile(r"""(?P<ip>[^ ]+) "(?P<time_local>[^"]+)" (?P<unix_timestamp>[^ ]+) (?P<status>[^ ]+) (?P<method>[^ ]+) (?P<uri>[^ ]+) (?P<proto>[^ ]+) (?P<bytes_sent>[^ ]+) (?P<request_time>[^ ]+) (?P<upstream_response_time>[^ ]+) "(?P<http_referer>[^"]+)" "(?P<http_user_agent>[^"]+)" "(?P<remote_addr>[^"]+)" "(?P<http_x_real_ip>[^"]+)" "(?P<pipe>[^"]+)"$""")
     while True:
         line = p.stdout.readline()
@@ -163,10 +159,8 @@ def main(argv):
 
         m = R.match(line)
         if m is not None:
-            # Look at 2XX status codes only
-            #if int(m.group('status')) >= 200 and int(m.group('status')) < 300:
             # This is completely proprietary, and should be removed
-            if '&username=1' not in m.group('uri'):
+            if '&username=1' not in m.group('uri') and '/v1/authinfo' in m.group('uri') and m.group('method') == 'GET':
                 ip = m.group('ip')
                 cnt[ip] += 1
 

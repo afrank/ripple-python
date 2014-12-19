@@ -46,20 +46,26 @@ class Punisher:
     def cur_punish(self):
         return self._cur_punish
     def del_cur_punish(self,ip):
-        del self._cur_punish[ip]
+        #del self._cur_punish[ip]
+        self._cur_punish[ip] -= 1
         self._cur_punish += collections.Counter()
-        self._changed = True
+        if self._cur_punish[ip] == 0:
+            self._changed = True
     def add_cur_punish(self,ip):
         punish_factor = math.sqrt(self._punish_log[ip])
         if punish_factor < 1:
             punish_factor = 1
         if self._cur_punish[ip] == 0:
-            print "calling new punishment for %s" % (ip,)
-            self._cur_punish[ip] += (int(time.time()) + int(PUNISHMENT_TIME * punish_factor))
             self._changed = True
-        else:
-            print "adding to existing punishment for %s" % (ip,)
-            self._cur_punish[ip] += int(PUNISHMENT_TIME * punish_factor)
+        self._cur_punish[ip] += int(round(punish_factor))
+        #if self._cur_punish[ip] == 0:
+        #    print "calling new punishment for %s" % (ip,)
+        #    self._cur_punish[ip] += (int(time.time()) + int(PUNISHMENT_TIME * punish_factor))
+        #    self._cur_punish[ip] += (int(time.time()) + int(PUNISHMENT_TIME * punish_factor))
+        #    self._changed = True
+        #else:
+        #    print "adding to existing punishment for %s" % (ip,)
+        #    self._cur_punish[ip] += int(PUNISHMENT_TIME * punish_factor)
         self.add_punish_log(ip)
 
     @property
@@ -108,12 +114,14 @@ def do_on_signal(signum, func, *args, **kwargs):
     def signal_shutdown(signum, frame):
         print >> sys.stderr, "got signal %d, exiting" % signum
         func(*args, **kwargs)
+        print "...And we're back!"
         sys.exit(128 + signum)
 
     signal.signal(signum, signal_shutdown)
 
 def worker():
     ip_list = []
+    decremented = []
     _x = []
     for k,v in dict(cnt).iteritems():
         if v > MAX_PER_INTERVAL:
@@ -121,20 +129,28 @@ def worker():
             ip_list += [k]
     for k,v in dict(P.pre_punish).iteritems():
         if k not in ip_list:
+            print "%s was in pre-punishment, but not in the current iteration, so decrementing pre-punishment" % (k,)
             P.del_pre_punish(k)
-            P.del_punish_log(k)
+            #P.del_punish_log(k)
         if v > MAX_INTERVALS:
             P.add_cur_punish(k)
             P.del_pre_punish(k,True)
-    for addr,end in dict(P.cur_punish).iteritems():
-        if end < time.time():
-            _x += [addr]
-    for x in _x:
-        print "removing %s from punishment list" % x
-        P.del_cur_punish(x)
-    for a in dict(P.punish_log).keys():
-        if a not in ip_list:
-            P.del_punish_log(k)
+    for k in list(P.cur_punish):
+        P.del_cur_punish(k)
+    #for addr,end in dict(P.cur_punish).iteritems():
+    #    if end < time.time():
+    #        _x += [addr]
+    #for x in _x:
+    #    print "removing %s from punishment list" % x
+    #    P.del_cur_punish(x)
+    #print "Punisher List: ",list(P.punish_log)
+    for a in list(P.punish_log):
+        #print "Debug LOOP: ",a
+        if a not in ip_list and a not in decremented:
+            print "%s is in post-punishment but not in this iteration, so decrementing post-punishment" % (a,)
+            print "Current Decrement Log: ", decremented
+            P.del_punish_log(a)
+            decremented += [a]
     P.publish()
     print "Current: ",ip_list
     print "Pre-Punishment: ",P.pre_punish

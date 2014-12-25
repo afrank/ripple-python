@@ -9,6 +9,7 @@ import time
 import math
 import threading
 import collections
+from monitoring2_7 import Graphite
 
 INTERVAL = 30
 MAX_PER_INTERVAL = 20
@@ -28,6 +29,7 @@ class Punisher:
         self._pre_punish = collections.Counter()
         self._cur_punish = collections.Counter()
         self._punish_log = collections.Counter()
+        print "Setting changed = True (__init__)"
         self._changed = True
     
     @property
@@ -50,12 +52,14 @@ class Punisher:
         self._cur_punish[ip] -= 1
         self._cur_punish += collections.Counter()
         if self._cur_punish[ip] == 0:
+            print "Setting changed = True (del_cur_punish)"
             self._changed = True
     def add_cur_punish(self,ip):
         punish_factor = math.sqrt(self._punish_log[ip])
         if punish_factor < 1:
             punish_factor = 1
         if self._cur_punish[ip] == 0:
+            print "Setting changed = True (add_cur_punish)"
             self._changed = True
         self._cur_punish[ip] += int(round(punish_factor))
         #if self._cur_punish[ip] == 0:
@@ -90,6 +94,7 @@ class Punisher:
             f.close()
             print("Reloading Nginx")
             subprocess.call(["/usr/sbin/nginx","-s","reload"])
+            print "Setting changed = False (publish)"
             self._changed = False
         else:
             print "No changes to publish."
@@ -127,23 +132,17 @@ def worker():
         if v > MAX_PER_INTERVAL:
             P.add_pre_punish(k)
             ip_list += [k]
+    for k in list(P.cur_punish):
+        P.del_cur_punish(k)
     for k,v in dict(P.pre_punish).iteritems():
         if k not in ip_list:
             print "%s was in pre-punishment, but not in the current iteration, so decrementing pre-punishment" % (k,)
             P.del_pre_punish(k)
             #P.del_punish_log(k)
         if v > MAX_INTERVALS:
+            print "%s triggered add_cur_punish because %i was greater than %i" % (k,v,MAX_INTERVALS)
             P.add_cur_punish(k)
             P.del_pre_punish(k,True)
-    for k in list(P.cur_punish):
-        P.del_cur_punish(k)
-    #for addr,end in dict(P.cur_punish).iteritems():
-    #    if end < time.time():
-    #        _x += [addr]
-    #for x in _x:
-    #    print "removing %s from punishment list" % x
-    #    P.del_cur_punish(x)
-    #print "Punisher List: ",list(P.punish_log)
     for a in list(P.punish_log):
         #print "Debug LOOP: ",a
         if a not in ip_list and a not in decremented:
@@ -152,6 +151,11 @@ def worker():
             P.del_punish_log(a)
             decremented += [a]
     P.publish()
+    if len(P.cur_punish) > 0:
+        G.add("blocked_count",len(P.cur_punish))
+        G.add("total_blocked_iterations", sum(P.cur_punish.values()))
+        G.add("avg_blocked_iterations", sum(P.cur_punish.values())/len(P.cur_punish) )
+        G.send("54.91.39.21")
     print "Current: ",ip_list
     print "Pre-Punishment: ",P.pre_punish
     print "Currently Punished: ",P.cur_punish
@@ -184,5 +188,7 @@ def main(argv):
 if __name__ == "__main__":
     cnt = collections.Counter()
     P = Punisher()
+    G = Graphite()
+    G.set_prefix("punisher.%s" % G.get("hostname"))
     sys.exit(main(sys.argv))
 
